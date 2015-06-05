@@ -156,8 +156,8 @@ def initialize() {
 	refresh()
 	
 	// Schedule polling
-	unschedule()
-	schedule("0 0/" + ((settings.polling.toInteger() > 0 )? settings.polling.toInteger() : 1)  + " * * * ?", refresh )
+	schedulePoll()
+    schedule("0 0/" + 5 + " * * * ?", monitorPoll )
 }
 
 /* Access Management */
@@ -424,8 +424,46 @@ def sendCommand(child, attributeName, attributeValue) {
 		apiPut(apiPath, apiBody) 	
 
 		// Schedule a refresh to verify it has been completed we give it 45 seconds
-		runIn(45, refresh, [overwrite: false])
+		//runIn(45, refresh, [overwrite: false])
 		
 		return true
 	} 
+}
+
+def monitorPoll(){
+    try {
+        log.debug "Monitoring the poll...Last poll stamp: " + state.polling.last
+        if (now() > state.polling.last + 300000){
+            log.debug "Polling schedule needs reboot!"
+            //sendAlert("Schedule is dead! Restart!")
+            reSchedulePoll()
+        }
+    } catch (Error e)	{
+		log.debug "Error in monitorPoll: $e"
+        //sendAlert("Error in monitorPoll: $e")
+	}
+    
+}
+
+private schedulePoll() {
+    log.debug "Creating schedule..."
+    unschedule()
+	schedule("0 0/" + ((settings.polling.toInteger() > 0 )? settings.polling.toInteger() : 1)  + " * * * ?", refresh )
+    log.debug "Schedule successfully started!"   
+}
+
+private reSchedulePoll() {
+    try {
+        log.debug "Atempting to recreate the schedule..."
+        schedule("0 0/" + ((settings.polling.toInteger() > 0 )? settings.polling.toInteger() : 1)  + " * * * ?", refresh )
+        log.debug "Schedule successfully restarted!"
+        //sendAlert("Schedule successfully restarted!")
+	} catch (Error e)	{
+		log.debug "Error restarting schedule: $e"
+        //sendAlert("Error restarting schedule: $e")
+	}
+}
+
+def sendAlert(alert){
+	sendSms("555-555-5555", "Alert: " + alert)
 }
