@@ -157,7 +157,7 @@ def initialize() {
 	
 	// Schedule polling
 	schedulePoll()
-    schedule("0 0/" + 5 + " * * * ?", monitorPoll )
+    schedule("43 0/" + 5 + " * * * ?", monitorPoll )
 }
 
 /* Access Management */
@@ -455,7 +455,7 @@ private schedulePoll() {
 private reSchedulePoll() {
     try {
         log.debug "Atempting to recreate the schedule..."
-        schedule("0 0/" + ((settings.polling.toInteger() > 0 )? settings.polling.toInteger() : 1)  + " * * * ?", refresh )
+        schedule("27 0/" + ((settings.polling.toInteger() > 0 )? settings.polling.toInteger() : 1)  + " * * * ?", refresh )
         log.debug "Schedule successfully restarted!"
         //sendAlert("Schedule successfully restarted!")
 	} catch (Error e)	{
