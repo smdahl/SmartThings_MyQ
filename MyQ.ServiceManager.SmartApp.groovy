@@ -448,7 +448,7 @@ def monitorPoll(){
 private schedulePoll() {
     log.debug "Creating schedule..."
     unschedule()
-	schedule("0 0/" + ((settings.polling.toInteger() > 0 )? settings.polling.toInteger() : 1)  + " * * * ?", refresh )
+	schedule("27 0/" + ((settings.polling.toInteger() > 0 )? settings.polling.toInteger() : 1)  + " * * * ?", refresh )
     log.debug "Schedule successfully started!"   
 }
 
