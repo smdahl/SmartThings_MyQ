@@ -1,7 +1,7 @@
 /**
  *  MyQ Lite
  *
- *  Copyright 2016 Jason Mok/Brian Beaird/Barry Burke
+ *  Copyright 2017 Jason Mok/Brian Beaird/Barry Burke
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -12,18 +12,23 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
- *  Last Updated : 1/12/2017
- *
+ *  Last Updated : 11/28/2017
+ *  SmartApp version: 2.0.3*
+ *  Door device version: 2.1.2*
+ *  Door-no-sensor device version: 1.1.1*
+ *  Light device version: 1.0.1*
  */
+include 'asynchttp_v1'
+
 definition(
 	name: "MyQ Lite",
 	namespace: "brbeaird",
 	author: "Jason Mok/Brian Beaird/Barry Burke",
 	description: "Integrate MyQ with Smartthings",
 	category: "SmartThings Labs",
-	iconUrl:   "http://smartthings.copyninja.net/icons/MyQ@1x.png",
-	iconX2Url: "http://smartthings.copyninja.net/icons/MyQ@2x.png",
-	iconX3Url: "http://smartthings.copyninja.net/icons/MyQ@3x.png"
+	iconUrl:   "https://raw.githubusercontent.com/brbeaird/SmartThings_MyQ/master/icons/myq.png",
+	iconX2Url: "https://raw.githubusercontent.com/brbeaird/SmartThings_MyQ/master/icons/myq@2x.png",
+	iconX3Url: "https://raw.githubusercontent.com/brbeaird/SmartThings_MyQ/master/icons/myq@3x.png"
 )
 
 preferences {
@@ -33,11 +38,19 @@ preferences {
     page(name: "prefSensor2", title: "MyQ")
     page(name: "prefSensor3", title: "MyQ")
     page(name: "prefSensor4", title: "MyQ")
+    page(name: "summary", title: "MyQ")
 }
+
 
 /* Preferences */
 def prefLogIn() {
-	def showUninstall = username != null && password != null 
+	state.previousVersion = state.thisSmartAppVersion
+    if (state.previousVersion == null){
+    	state.previousVersion = 0;
+    }
+    state.thisSmartAppVersion = "2.0.3"
+    state.installMsg = ""
+    def showUninstall = username != null && password != null 
 	return dynamicPage(name: "prefLogIn", title: "Connect to MyQ", nextPage:"prefListDevices", uninstall:showUninstall, install: false) {
 		section("Login Credentials"){
 			input("username", "email", title: "Username", description: "MyQ Username (email address)")
@@ -50,12 +63,14 @@ def prefLogIn() {
 }
 
 def prefListDevices() {
-	getSelectedDevices("lights")
+	getVersionInfo(0, 0);
+    getSelectedDevices("lights")
     if (forceLogin()) {
 		def doorList = getDoorList()		
 		if ((state.doorList) || (state.lightList)){
-        	if ((state.doorList)) {
-                return dynamicPage(name: "prefListDevices",  title: "Devices", nextPage:"prefSensor1", install:false, uninstall:true) {
+        	def nextPage = "prefSensor1"
+            if (!state.doorList){nextPage = "summary"}  //Skip to summary if there are no doors to handle            
+                return dynamicPage(name: "prefListDevices",  title: "Devices", nextPage:nextPage, install:false, uninstall:true) {
                     if (state.doorList) {
                         section("Select which garage door/gate to use"){
                             input(name: "doors", type: "enum", required:false, multiple:true, metadata:[values:state.doorList])
@@ -67,9 +82,6 @@ def prefListDevices() {
                         }
                     } 
                 }
-            } 
-        
-        
         
         }else {
 			def devList = getDeviceList()
@@ -95,8 +107,7 @@ def prefSensor1() {
 	log.debug "Doors chosen: " + doors
     
     //Set defaults
-    def nextPage = ""
-    def showInstall = true
+    def nextPage = "summary"    
     def titleText = ""
     
     //Determine if we have multiple doors and need to send to another page
@@ -111,11 +122,10 @@ def prefSensor1() {
     else{
     	log.debug "Multiple doors detected."
         nextPage = "prefSensor2"
-        titleText = "OPTIONAL: Select Sensors for Door 1 (" + state.data[doors[0]].name + ")"
-        showInstall = false;
+        titleText = "OPTIONAL: Select Sensors for Door 1 (" + state.data[doors[0]].name + ")"        
     }    
     
-    return dynamicPage(name: "prefSensor1",  title: "Optional Sensors and Push Buttons", nextPage:nextPage, install:showInstall, uninstall:true) {        
+    return dynamicPage(name: "prefSensor1",  title: "Optional Sensors and Push Buttons", nextPage:nextPage, install:false, uninstall:true) {        
         section(titleText){			
 			paragraph "Optional: If you have sensors on this door, select them below. A sensor allows the device type to know whether the door is open or closed, which helps the device function " + 
             	"as a switch you can turn on (to open) and off (to close)."                
@@ -131,16 +141,14 @@ def prefSensor1() {
 }
 
 def prefSensor2() {	   
-    def nextPage = ""
-    def showInstall = true
+    def nextPage = "summary"    
     def titleText = "Sensors for Door 2 (" + state.data[doors[1]].name + ")"
      
     if (doors.size() > 2){
-    	nextPage = "prefSensor3"
-        showInstall = false;
+    	nextPage = "prefSensor3"        
     }
     
-    return dynamicPage(name: "prefSensor2",  title: "Optional Sensors and Push Buttons", nextPage:nextPage, install:showInstall, uninstall:true) {
+    return dynamicPage(name: "prefSensor2",  title: "Optional Sensors and Push Buttons", nextPage:nextPage, install:false, uninstall:true) {
         section(titleText){			
 			input(name: "door2Sensor", title: "Contact Sensor", type: "capability.contactSensor", required: false, multiple: false)
 			input(name: "door2Acceleration", title: "Acceleration Sensor", type: "capability.accelerationSensor", required: false, multiple: false)
@@ -153,16 +161,14 @@ def prefSensor2() {
 }
 
 def prefSensor3() {
-    def nextPage = ""
-    def showInstall = true
+    def nextPage = "summary"    
     def titleText = "Sensors for Door 3 (" + state.data[doors[2]].name + ")"
      
     if (doors.size() > 3){
-    	nextPage = "prefSensor4"
-        showInstall = false;
+    	nextPage = "prefSensor4"        
     }
     
-    return dynamicPage(name: "prefSensor3",  title: "Optional Sensors and Push Buttons", nextPage:nextPage, install:showInstall, uninstall:true) {
+    return dynamicPage(name: "prefSensor3",  title: "Optional Sensors and Push Buttons", nextPage:nextPage, install:false, uninstall:true) {
         section(titleText){			
 			input(name: "door3Sensor", title: "Contact Sensor", type: "capability.contactSensor", required: false, multiple: false)
 			input(name: "door3Acceleration", title: "Acceleration Sensor", type: "capability.accelerationSensor", required: false, multiple: false)
@@ -176,7 +182,7 @@ def prefSensor3() {
 
 def prefSensor4() {	   
 	def titleText = "Contact Sensor for Door 4 (" + state.data[doors[3]].name + ")"
-    return dynamicPage(name: "prefSensor4",  title: "Optional Sensors and Push Buttons", install:true, uninstall:true) {
+    return dynamicPage(name: "prefSensor4",  title: "Optional Sensors and Push Buttons", nextPage:"summary", install:false, uninstall:true) {
         section(titleText){			
 			input(name: "door4Sensor", title: "Contact Sensor", type: "capability.contactSensor", required: "false", multiple: "false")
 			input(name: "door4Acceleration", title: "Acceleration Sensor", type: "capability.accelerationSensor", required: false, multiple: false)
@@ -188,21 +194,36 @@ def prefSensor4() {
     }
 }
 
+def summary() {	   
+	state.installMsg = ""
+    initialize()
+    versionCheck()
+    return dynamicPage(name: "summary",  title: "Summary", install:true, uninstall:true) {            
+        section("Installation Details:"){
+			paragraph state.installMsg
+            paragraph state.versionWarning
+		}
+    }
+}
+
 /* Initialization */
-def installed() { 
-	//initialize() 
+def installed() { 	
 }
 
 def updated() { 
 	log.debug "Updated..."
-    unsubscribe()
-	initialize()
+    if (state.previousVersion != state.thisSmartAppVersion){    	
+    	getVersionInfo(state.previousVersion, state.thisSmartAppVersion);
+    }    
 }
 
-def uninstalled() {}	
+def uninstalled() {
+	getVersionInfo(state.previousVersion, 0);
+}	
 
 def initialize() {    
-	log.debug "Initializing..."
+	unsubscribe()
+    log.debug "Initializing..."
     login()
     state.sensorMap = [:]
     
@@ -212,18 +233,20 @@ def initialize() {
     
 	// Create selected devices
 	def doorsList = getDoorList()
-	def lightsList = state.lightList    
+	def lightsList = state.lightList
     
-    def firstDoor = doors[0]        
-    //Handle single door (sometimes it's just a dumb string thanks to the simulator)
-    if (doors instanceof String)
-    firstDoor = doors   
-    
-	//Create door devices
-    createChilDevices(firstDoor, door1Sensor, doorsList[firstDoor], prefDoor1PushButtons)
-    if (doors[1]) createChilDevices(doors[1], door2Sensor, doorsList[doors[1]], prefDoor2PushButtons)
-    if (doors[2]) createChilDevices(doors[2], door3Sensor, doorsList[doors[2]], prefDoor3PushButtons)
-    if (doors[3]) createChilDevices(doors[3], door4Sensor, doorsList[doors[3]], prefDoor4PushButtons)    
+    if (doors != null){
+        def firstDoor = doors[0]        
+        //Handle single door (sometimes it's just a dumb string thanks to the simulator)
+        if (doors instanceof String)
+        firstDoor = doors   
+
+        //Create door devices
+        createChilDevices(firstDoor, door1Sensor, doorsList[firstDoor], prefDoor1PushButtons)
+        if (doors[1]) createChilDevices(doors[1], door2Sensor, doorsList[doors[1]], prefDoor2PushButtons)
+        if (doors[2]) createChilDevices(doors[2], door3Sensor, doorsList[doors[2]], prefDoor3PushButtons)
+        if (doors[3]) createChilDevices(doors[3], door4Sensor, doorsList[doors[3]], prefDoor4PushButtons)    
+    }
     
     //Create light devices
     def selectedLights = getSelectedDevices("lights")    
@@ -231,10 +254,20 @@ def initialize() {
     	log.debug "Checking for existing light: " + it
     	if (!getChildDevice(it)) {
         	log.debug "Creating child light device: " + it
-        	addChildDevice("brbeaird", "MyQ Light Controller", it, null, ["name": lightsList[it]])
+        	
+            try{            
+            	addChildDevice("brbeaird", "MyQ Light Controller", it, getHubID(), ["name": lightsList[it]])
+                state.installMsg = state.installMsg + lightsList[it] + ": created light device. \r\n\r\n"
+            }
+            catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+            {
+                log.debug "Error! " + e                        
+                state.installMsg = state.installMsg + lightsList[it] + ": problem creating light device. Check your IDE to make sure the brbeaird : MyQ Light Controller device handler is installed and published. \r\n\r\n"
+            }
         }
         else{
         	log.debug "Light device already exists: " + it
+            state.installMsg = state.installMsg + lightsList[it] + ": light device already exists. \r\n\r\n"
         }
         
     }
@@ -284,48 +317,92 @@ def initialize() {
 }
 
 def createChilDevices(door, sensor, doorName, prefPushButtons){
-	if (door){
+	log.debug "In CreateChild"
+    if (door){
         //Has door's child device already been created?
         def existingDev = getChildDevice(door)
         def existingType = existingDev?.typeName
         
         if (existingDev){        
         	log.debug "Child already exists for " + doorName + ". Sensor name is: " + sensor
+            state.installMsg = state.installMsg + doorName + ": door device already exists. \r\n\r\n"
             if ((!sensor) && existingType == "MyQ Garage Door Opener"){
             	log.debug "Type needs updating to non-sensor version"
-                existingDev.deviceType = "MyQ Garage Door Opener-NoSensor"
+                existingDev.deviceType = "MyQ Garage Door Opener-NoSensor2"
+                state.installMsg = state.installMsg + doorName + ": changed door device to No-sensor version." + "\r\n\r\n"
             }
             
             if (sensor && existingType == "MyQ Garage Door Opener-NoSensor"){
             	log.debug "Type needs updating to sensor version"
                 existingDev.deviceType = "MyQ Garage Door Opener"
+                state.installMsg = state.installMsg + doorName + ": changed door device to sensor version." + "\r\n\r\n"
             }            
         }
         else{
             log.debug "Creating child door device " + door
-            if (sensor){
-                addChildDevice("brbeaird", "MyQ Garage Door Opener", door, null, ["name": doorName]) 
-            }
-            else{
-                addChildDevice("brbeaird", "MyQ Garage Door Opener-NoSensor", door, null, ["name": doorName]) 
-            }
+            
+                if (sensor){
+                    try{
+                        log.debug "Creating door with sensor"
+                        addChildDevice("brbeaird", "MyQ Garage Door Opener", door, getHubID(), ["name": doorName]) 
+                        state.installMsg = state.installMsg + doorName + ": created door device (sensor version) \r\n\r\n"
+                    }
+                    catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                    {
+                        log.debug "Error! " + e                        
+                        state.installMsg = state.installMsg + doorName + ": problem creating door device (sensor type). Check your IDE to make sure the brbeaird : MyQ Garage Door Opener device handler is installed and published. \r\n\r\n"
+                        
+                    }
+                }
+                else{
+                    try{
+                        log.debug "Creating door with no sensor"
+                        addChildDevice("brbeaird", "MyQ Garage Door Opener-NoSensor", door, getHubID(), ["name": doorName]) 
+                        state.installMsg = state.installMsg + doorName + ": created door device (no-sensor version) \r\n\r\n"
+                    }
+                    catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                    {
+                        log.debug "Error! " + e                        
+                        state.installMsg = state.installMsg + doorName + ": problem creating door device (no-sensor type). Check your IDE to make sure the brbeaird : MyQ Garage Door Opener-NoSensor device handler is installed and published. \r\n\r\n"
+                    }
+                }
+            
         }
         
         //Create push button devices
         if (prefPushButtons){
         	def existingOpenButtonDev = getChildDevice(door + " Opener")
             def existingCloseButtonDev = getChildDevice(door + " Closer")
-            if (!existingOpenButtonDev){
-                def openButton = addChildDevice("smartthings", "Momentary Button Tile", door + " Opener", null, [name: doorName + " Opener", label: doorName + " Opener"])
-                subscribe(openButton, "momentary.pushed", doorButtonOpenHandler)                
+            if (!existingOpenButtonDev){                
+                try{
+                	def openButton = addChildDevice("smartthings", "Momentary Button Tile", door + " Opener", getHubID(), [name: doorName + " Opener", label: doorName + " Opener"])
+                	state.installMsg = state.installMsg + doorName + ": created push button device. \r\n\r\n"
+                	subscribe(openButton, "momentary.pushed", doorButtonOpenHandler)                
+                }
+                catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                {
+                    log.debug "Error! " + e                                            
+                    state.installMsg = state.installMsg + doorName + ": problem creating push button device. Check your IDE to make sure the smartthings : Momentary Button Tile device handler is installed and published. \r\n\r\n"
+                }
             }
             else{
-            	subscribe(existingOpenButtonDev, "momentary.pushed", doorButtonOpenHandler)                
+            	subscribe(existingOpenButtonDev, "momentary.pushed", doorButtonOpenHandler)
+                state.installMsg = state.installMsg + doorName + ": push button device already exists. Subscription recreated. \r\n\r\n"
+                log.debug "subscribed to button: " + existingOpenButtonDev
+                
+                
+                
             }
             
             if (!existingCloseButtonDev){                
-                def closeButton = addChildDevice("smartthings", "Momentary Button Tile", door + " Closer", null, [name: doorName + " Closer", label: doorName + " Closer"])
-                subscribe(closeButton, "momentary.pushed", doorButtonCloseHandler)
+                try{
+                    def closeButton = addChildDevice("smartthings", "Momentary Button Tile", door + " Closer", getHubID(), [name: doorName + " Closer", label: doorName + " Closer"])
+                    subscribe(closeButton, "momentary.pushed", doorButtonCloseHandler)
+                }
+                catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                {
+                    log.debug "Error! " + e                        
+                }
             }
             else{
                 subscribe(existingCloseButtonDev, "momentary.pushed", doorButtonCloseHandler)                
@@ -343,7 +420,8 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                 try{
                 	deleteChildDevice(it.deviceNetworkId)
                 } catch (e){
-                	sendPush("Warning: unable to delete virtual on/off push button - you'll need to manually remove it.")
+                	//sendPush("Warning: unable to delete virtual on/off push button - you'll need to manually remove it.")
+                    state.installMsg = state.installMsg + "Warning: unable to delete virtual on/off push button - you'll need to manually remove it. \r\n\r\n"
                     log.debug "Error trying to delete button " + it + " - " + e
                     log.debug "Button  is likely in use in a Routine, or SmartApp (make sure and check SmarTiles!)."
                 }
@@ -552,11 +630,11 @@ private getDoorList() {
     def deviceList = [:]
 	apiGet("/api/v4/userdevicedetails/get", []) { response ->
 		if (response.status == 200) {
-        //log.debug "response data: " + response.data.Devices
-        //sendAlert("response data: " + response.data.Devices)
+            //log.debug "response data: " + response.data
+            //sendAlert("response data: " + response.data.Devices)
 			response.data.Devices.each { device ->
-				// 2 = garage door, 5 = gate, 7 = MyQGarage(no gateway), 17 = Garage Door Opener WGDO
-				if (device.MyQDeviceTypeId == 2||device.MyQDeviceTypeId == 5||device.MyQDeviceTypeId == 7||device.MyQDeviceTypeId == 17) {
+				// 2 = garage door, 5 = gate, 7 = MyQGarage(no gateway), 9 = commercial door, 17 = Garage Door Opener WGDO
+				if (device.MyQDeviceTypeId == 2||device.MyQDeviceTypeId == 5||device.MyQDeviceTypeId == 7||device.MyQDeviceTypeId == 17||device.MyQDeviceTypeId == 9) {
 					log.debug "Found door: " + device.MyQDeviceId
                     def dni = [ app.id, "GarageDoorOpener", device.MyQDeviceId ].join('|')
 					def description = ''
@@ -607,6 +685,9 @@ private getDoorList() {
                         deviceList[dni] = description
                         state.doorList[dni] = description
                         state.data[dni] = [ status: doorState, lastAction: updatedTime, name: description, type: device.MyQDeviceTypeId ]
+                    }
+                    else{
+                    	log.debug "Door " + device.MyQDeviceId + " has blank desc field. This is unusual..."
                     }
 				}
                 
@@ -671,6 +752,15 @@ private getDeviceList() {
 	return deviceList
 }
 
+def getHubID(){
+    def hubID    
+    def hubs = location.hubs.findAll{ it.type == physicalgraph.device.HubType.PHYSICAL } 
+    //log.debug "hub count: ${hubs.size()}"
+    //log.debug "hubID: ${hubID}"
+    return hubs[0].id 
+}
+
+
 /* api connection */
 // get URL 
 private getApiURL() {
@@ -692,11 +782,18 @@ private getApiAppID() {
 // HTTP GET call
 private apiGet(apiPath, apiQuery = [], callback = {}) {	
 	// set up query
+    def myHeaders = ""
+    
+    
 	apiQuery = [ appId: getApiAppID() ] + apiQuery
-	if (state.session.securityToken) { apiQuery = apiQuery + [SecurityToken: state.session.securityToken ] }
+	if (state.session.securityToken) { 
+    	apiQuery = apiQuery + [SecurityToken: state.session.securityToken ] 
+        myHeaders = [ "SecurityToken": state.session.securityToken,                        
+                         "MyQApplicationId": getApiAppID() ]
+        }
        
 	try {
-		httpGet([ uri: getApiURL(), path: apiPath, query: apiQuery ]) { response -> callback(response) }
+		httpGet([ uri: getApiURL(), path: apiPath, headers: myHeaders, query: apiQuery ]) { response -> callback(response) }
 	}	catch (SocketException e)	{
 		//sendAlert("API Error: $e")
         log.debug "API Error: $e"
@@ -709,12 +806,18 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
 	apiBody = [ ApplicationId: getApiAppID() ] + apiBody
 	if (state.session.securityToken) { apiBody = apiBody + [SecurityToken: state.session.securityToken ] }
     
-	// set up query
+	def myHeaders = ""  
+    
+    // set up query
 	def apiQuery = [ appId: getApiAppID() ]
-	if (state.session.securityToken) { apiQuery = apiQuery + [SecurityToken: state.session.securityToken ] }
+	if (state.session.securityToken) { 
+    	apiQuery = apiQuery + [SecurityToken: state.session.securityToken ]
+        myHeaders = [ "SecurityToken": state.session.securityToken,                        
+                         "MyQApplicationId": getApiAppID() ]
+    }
     
 	try {
-		httpPut([ uri: getApiURL(), path: apiPath, contentType: "application/json; charset=utf-8", body: apiBody, query: apiQuery ]) { response -> callback(response) }
+		httpPut([ uri: getApiURL(), path: apiPath, headers: myHeaders, contentType: "application/json; charset=utf-8", body: apiBody, query: apiQuery ]) { response -> callback(response) }
 	} catch (SocketException e)	{
 		log.debug "API Error: $e"
 	}
@@ -780,6 +883,91 @@ def sendCommand(child, attributeName, attributeValue) {
 		return true
 	} 
 }
+
+
+
+def getVersionInfo(oldVersion, newVersion){	
+    def params = [
+        uri:  'http://www.fantasyaftermath.com/getMyQVersion/' + oldVersion + '/' + newVersion,
+        contentType: 'application/json'
+    ]
+    asynchttp_v1.get('responseHandlerMethod', params)
+}
+
+def responseHandlerMethod(response, data) {
+    if (response.hasError()) {
+        log.error "response has error: $response.errorMessage"
+    } else {
+        def results = response.json
+        state.latestSmartAppVersion = results.SmartApp;
+        state.latestDoorVersion = results.DoorDevice;
+        state.latestDoorNoSensorVersion = results.DoorDeviceNoSensor;
+        state.latestLightVersion = results.LightDevice;
+    }
+    
+    log.debug "previousVersion: " + state.previousVersion
+    log.debug "installedVersion: " + state.thisSmartAppVersion
+    log.debug "latestVersion: " + state.latestSmartAppVersion
+    log.debug "doorVersion: " + state.latestDoorVersion
+    log.debug "doorNoSensorVersion: " + state.latestDoorNoSensorVersion
+    log.debug "lightVersion: " + state.latestLightVersion
+}
+
+def versionCheck(){
+	state.versionWarning = ""    
+    state.thisDoorVersion = ""
+	state.thisDoorNoSensorVersion = ""
+    state.thisLightVersion = ""
+    state.versionWarning = ""
+    
+    def usesDoorDev = false
+    def usesDoorNoSensorDev = false
+    def usesLightControllerDev = false
+    
+    getChildDevices().each { childDevice ->
+    	
+        try {			
+            def devType = childDevice.getTypeName()            
+            
+            if (devType != "Momentary Button Tile"){               	                
+                if (devType == "MyQ Garage Door Opener"){
+                	usesDoorDev = true
+                    state.thisDoorVersion = childDevice.showVersion()                    
+                }
+                if (devType == "MyQ Garage Door Opener-NoSensor"){
+                	usesDoorNoSensorDev = true
+                    state.thisDoorNoSensorVersion = childDevice.showVersion()                    
+                }
+                if (devType == "MyQ Light Controller"){                
+                	usesLightControllerDev = true
+                    state.thisLightVersion = childDevice.showVersion()                    
+                }
+            }
+            
+		} catch (MissingPropertyException e)	{
+			log.debug "API Error: $e"
+		}
+    }
+    
+    //log.debug "This door (no sensor) version: " + state.thisDoorNoSensorVersion
+    //log.debug "This door version: " + state.thisDoorVersion
+    //log.debug "This light version: " + state.thisLightVersion    
+    
+    if (state.thisSmartAppVersion != state.latestSmartAppVersion) {
+    	state.versionWarning = state.versionWarning + "Your SmartApp version (" + state.thisSmartAppVersion + ") is not the latest version (" + state.latestSmartAppVersion + ")\n\n"
+	}
+	if (usesDoorDev && state.thisDoorVersion != state.latestDoorVersion) {
+    	state.versionWarning = state.versionWarning + "Your MyQ Door device version (" + state.thisDoorVersion + ") is not the latest version (" + state.latestDoorVersion + ")\n\n"
+    }
+	if (usesDoorNoSensorDev && state.thisDoorNoSensorVersion != state.latestDoorNoSensorVersion) {
+    	state.versionWarning = state.versionWarning + "Your MyQ Door (No-sensor) device version (" + state.thisDoorNoSensorVersion + ") is not the latest version (" + state.latestDoorNoSensorVersion + ")\n\n"
+    }
+    if (usesLightControllerDev && state.thisLightVersion != state.latestLightVersion) {
+    	state.versionWarning = state.versionWarning + "Your MyQ Light Controller device version (" + state.thisLightVersion + ") is not the latest version (" + state.latestLightVersion + ")\n\n"
+    }
+    log.debug state.versionWarning
+}
+
 
 def notify(message){
 	sendNotificationEvent(message)
